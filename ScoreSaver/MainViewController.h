@@ -10,6 +10,6 @@
 #import "NameCell.h"
 
 
-@interface MainViewController : UIViewController <UICollectionViewDataSource, UICollectionViewDelegate, UIAlertViewDelegate, NameCellDelegate, UIGestureRecognizerDelegate>
+@interface MainViewController : UIViewController <UICollectionViewDataSource, UICollectionViewDelegate, UIAlertViewDelegate, NameCellDelegate, UIGestureRecognizerDelegate, UITextFieldDelegate>
 @property (nonatomic) NSManagedObjectContext *managedObjectContext;
 @end

@@ -49,7 +49,11 @@ static char const * const alertTagKey = "alertTag";
                                           cancelButtonTitle:@"Cancel"
                                           otherButtonTitles:@"Add Person", nil];
     alert.alertViewStyle = UIAlertViewStylePlainTextInput;
-    [alert textFieldAtIndex:0].autocapitalizationType = UITextAutocapitalizationTypeWords;
+    
+    UITextField *textField = [alert textFieldAtIndex:0];
+    textField.autocapitalizationType = UITextAutocapitalizationTypeWords;
+    textField.delegate = self;
+    
     alert.tag = 0;
     [alert show];
 }
@@ -140,12 +144,18 @@ static char const * const alertTagKey = "alertTag";
     cell.contentView.backgroundColor = [UIColor colorWithWhite:0.000 alpha:0.200];
     [cell setPerson:person];
     
-    if (cell.gestureRecognizers.count == 0) {
-        UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] init];
-        [panGesture addTarget:self action:@selector(panGestureWasPerformed:)];
-        panGesture.delegate = self;
-        [cell.contentView addGestureRecognizer:panGesture];
+    NSMutableArray *gesturesToRemove = [@[] mutableCopy];
+    for (UIGestureRecognizer *g in cell.contentView.gestureRecognizers) {
+        if ([g isKindOfClass:[UIPanGestureRecognizer class]]) {
+            [gesturesToRemove addObject:g];
+            [cell.contentView removeGestureRecognizer:g];
+        }
     }
+
+    UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] init];
+    [panGesture addTarget:self action:@selector(panGestureWasPerformed:)];
+    panGesture.delegate = self;
+    [cell.contentView addGestureRecognizer:panGesture];
     
     return cell;
 }
@@ -156,23 +166,25 @@ static char const * const alertTagKey = "alertTag";
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
 {
+    if ([otherGestureRecognizer isKindOfClass:NSClassFromString(@"UIScrollViewPanGestureRecognizer")]) {
+        if (gestureRecognizer.state == UIGestureRecognizerStateChanged) {
+            return NO;
+        }
+    }
+    
     return YES;
 }
 
 
 - (void)panGestureWasPerformed:(UIPanGestureRecognizer *)gesture
 {
-    NSLog(@"Panning");
-    if (![gesture.view.superview isKindOfClass:[NameCell class]]) {
-        return;
-    }
-    
-    static CGPoint originalCenter;
+//    static CGPoint originalCenter;
     static UIView *v;
     static CGFloat const width = 60.0f;
     
     if (gesture.state == UIGestureRecognizerStateBegan) {
-        originalCenter = gesture.view.center;
+        
+//        originalCenter = gesture.view.center;
         
         UIView  *superview = gesture.view.superview;
         v = [[UIView alloc] initWithFrame:CGRectMake(superview.bounds.size.width, 0, 0, superview.bounds.size.height)];
@@ -187,20 +199,18 @@ static char const * const alertTagKey = "alertTag";
     }
     
     if (gesture.state == UIGestureRecognizerStateChanged) {
+        
         CGPoint translate = [gesture translationInView:gesture.view.superview];
-        
-        CGFloat x = originalCenter.x + translate.x;
-        CGFloat diff = originalCenter.x-x;
-        if (diff > width || diff <= 0) {
-            return;
-        }
-        
+        CGFloat dragOffset = translate.x * -1;
+
         CGRect vFrame = v.frame;
-        vFrame.size.width = diff;
-        vFrame.origin.x = v.superview.bounds.size.width - diff;
+        vFrame.size.width = MAX(MIN(dragOffset, width), 0);
+        vFrame.origin.x = v.superview.bounds.size.width - vFrame.size.width;
         v.frame = vFrame;
-               
-        gesture.view.center = CGPointMake(x, originalCenter.y);
+        
+        CGRect frame = gesture.view.frame;
+        frame.origin.x = vFrame.size.width * -1;
+        gesture.view.frame = frame;
     }
     
     if (gesture.state == UIGestureRecognizerStateEnded ||
@@ -208,19 +218,24 @@ static char const * const alertTagKey = "alertTag";
         gesture.state == UIGestureRecognizerStateCancelled)
     {
         [UIView animateWithDuration:0.4f animations:^{
-            gesture.view.center = originalCenter;
             
             CGRect vFrame = v.frame;
             vFrame.size.width = 0;
             vFrame.origin.x = v.superview.bounds.size.width;
             v.frame = vFrame;
+            
+            CGRect frame = gesture.view.frame;
+            frame.origin.x = 0;
+            gesture.view.frame = frame;
         }];
         
-        CGPoint translate = [gesture translationInView:gesture.view.superview];        
-        CGFloat x = originalCenter.x + translate.x;
-        CGFloat diff = originalCenter.x-x;
+        if (gesture.state != UIGestureRecognizerStateEnded) {
+            return;
+        }
         
-        if (diff >= width) {
+        CGPoint translate = [gesture translationInView:gesture.view.superview];
+        
+        if (translate.x*-1 >= width) {
             NameCell *cell = (NameCell *)gesture.view.superview;
             
             UIAlertView *alert = [[UIAlertView alloc] initWithTitle:[NSString stringWithFormat:@"Are you sure you want to delete %@?", cell.person.name]
@@ -283,6 +298,18 @@ static char const * const alertTagKey = "alertTag";
             [self deletePerson:person];
         }
     }
+}
+
+
+# pragma mark -
+# pragma mark UITextFieldDelegate
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField
+{
+    UIAlertView *alertView = (UIAlertView *)textField.superview;
+    [alertView dismissWithClickedButtonIndex:1 animated:YES];
+    [alertView.delegate alertView:alertView clickedButtonAtIndex:1];
+    return YES;
 }
 
 
